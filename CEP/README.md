@@ -1,6 +1,5 @@
-## Fichiers de cours
-
-- #### CEP : Conception et Exploitation des Processeurs 
+## CEP
+### Conception et Exploitation des Processeurs 
 
 
 Réparti en deux parties : TP et PROJET. 
