@@ -1,0 +1,39 @@
+Archive fournie par les enseignants pour TPs de TL2
+Contenu: 3 implémentations d'une calculette
+----------------------------------------------------
+
+
+1) Chapitre 2 du cours d'amphi.
+--------------------------------
+  - list.h & list.c: type abstrait de listes.
+  - sources BisonYacc/
+
+  A FAIRE: compiler et essayer la calculette (avec les exemples du cours par exemple).
+
+2) TP1: cf. sujet tp1-pcalc.pdf
+-------------------------------
+   la version fournie ne sait traiter qu'une expression réduite à un
+   entier d'un seul chiffre !
+
+  - Makefile: pour compilation fichiers C.
+  - lexer.h: spécification de l'analyseur lexical
+  - lexer.c: à compléter
+    => utiliser "debug_lexer" pour vérifier
+  - pcalc.c: à compléter
+
+  A FAIRE dans l'ordre:
+    - Compléter lexer.c (cf. question 5 du sujet), en utilisant debug_lexer.
+      Vérifier que tous les tokens sont reconnus.
+      Vérifier aussi des suites de tokens.
+    - Dans pcalc.c: compléter "parse_exp" (cf. question 6 du sujet).
+      Tester déjà quelques expressions simples.
+    - Dans pcalc.c: compléter "parse_input" (cf. question 7 du sujet).
+      Tester bien l'utilisation des variables.
+      
+3) TP2: cf. sujet tp2-calc.pdf
+------------------------------
+
+  A FAIRE:
+  - étendre lexer.c & lexer.h pour ajouter les parenthèses.
+  - compléter calc.c (cf. sujet tp2-calc.pdf)
+  - tester bien votre calculette: elle doit se comporter de manière identique à la calculette implémentée dans BisonYacc/
