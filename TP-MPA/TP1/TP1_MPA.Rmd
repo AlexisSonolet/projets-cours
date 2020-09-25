@@ -1,0 +1,164 @@
+---
+title: "TP de MNB"
+author: Clément MALLERET, Alexis SONOLET
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+## Question 1 :
+
+$$ p(y, \theta) = \frac{1}{16 \pi} exp \left( -\frac{1}{32} (8y^2 - 4 y \theta + \theta ^2) \right) $$
+On a :
+$$ 8y^2 - 4y\theta + \theta ^2 = 8\left( y \ - \ \frac{\theta}{4} \right)^2 + \frac{\theta ^2}{2} $$
+Ainsi :
+$$ p(y, \theta) = -\frac{1}{16 \pi} exp \left( -\frac{1}{4} \left( y - \frac{\theta}{4} \right) ^2 + \frac{\theta ^2}{64} \right) $$
+$$ p(y, \theta) = -\frac{1}{16 \pi} exp \left( - \frac{ \left( y - \frac{\theta}{4} \right) ^2 }{2 (\sqrt 2) ^2} \right) exp \left( - \frac{ \theta ^2 }{2 (4\sqrt 2) ^2} \right)$$
+
+Alors on peut identifier plusieurs parties :
+
+1. La partie en $$ \frac{1}{2 \sqrt \pi}  exp \left( - \frac{ \left( y - \frac{\theta}{4} \right) ^2 }{2 (\sqrt 2) ^2} \right) $$ suit une loi normale $$ N \left( \frac{\theta}{4}, \sqrt 2 \right) $$.
+2. La partie en $$ \frac{1}{8 \sqrt \pi} exp \left( - \frac{ \theta ^2 }{2 (4\sqrt 2) ^2} \right) $$ suit une loi normale $$ N \left( 0, 4 \sqrt 2 \right) $$.
+
+Par identification avec la loi : 
+$$ p(y, \theta) = p(\theta) * p(y | \theta) $$
+Alors : 
+$$ p(y | \theta) $$ suit une loi normale $$ N \left( \frac{\theta}{4}, \sqrt 2 \right) $$
+$$ p(\theta) $$ suit une loi normale $$ N \left( 0, 4 \sqrt 2 \right) $$
+
+## Question 2 :
+
+En réitérant le même procédé qu'à la question 1, mais en isolant $y$ au lieu de $\theta$, on trouve :
+$$p(y, \theta) = -\frac{1}{16 \pi} exp \left( - \frac{ \left( \theta - 2y \right) ^2 }{2 (4) ^2} \right) exp \left( - \frac{ y ^2 }{2 (2) ^2} \right) $$
+Comme on a de plus :
+$$ p(y, \theta) = p(\theta | y) * p(y) $$
+Alors :
+$$ p(\theta | y) $$ suit une loi normale $$ N \left( 2y, 4 \right) $$
+$$ p(y) $$ suit une loi normale $$ N \left( 0, 2 \right) $$
+
+
+## Question 3 :
+
+Pour simuler un tirage selon la loi de densité $p(y, \theta)$, on simule celle de $\theta$ puis on l'utilise pour simuler la loi suivant $p(y | \theta)$ : 
+
+```{r}
+simulation_theta <- function(n){
+  tirage_theta = rnorm(n, 0, 4 * sqrt(2))
+  return(tirage_theta)
+}
+
+simulation_y <- function(tirage_theta){
+  tirage_y = c()
+  for(theta in tirage_theta){
+    tirage_y = c(tirage_y, rnorm(1, theta / 4, sqrt(2)))
+  }
+  return(tirage_y)
+}
+
+simulation <- function(n){
+    theta <- simulation_theta(n)
+    y <- simulation_y(theta)
+    return(data.frame(y, theta))
+}
+
+```
+
+
+## Question 4 :
+On a vu que $p(\theta | y)$ suit une loi normale : son espérance est $2y$.
+
+## Question 5 et 6:
+```{r}
+tirage <- simulation(1000)
+plot(tirage, type = "p", col = "grey")
+lines((-6:6), 2 * (-6:6), type = "l", col = "blue")
+
+
+# Question 6
+
+#On cr?e le modèle lin?aire 
+reg_lin <- lm(tirage[,2] ~ tirage[,1])
+#On affiche la droite de r?gression lin?aire
+abline(reg_lin, col = "red")
+```
+
+## Question 7
+```{r}
+#on simule les tirages
+tirage <- simulation(100000)
+```
+
+```{r}
+#On filtre les valeurs qui ne remplissent pas la condition
+selection <- tirage[tirage$y > 1.99,]
+selection <- selection[selection$y < 2.01,]
+selection
+```
+
+## Question 8
+```{r}
+theta = selection[,2]
+hist(theta, freq = FALSE)
+```
+
+On peut voir que les valeurs de $\theta$ les plus probables pour que $y$ soit compris entre 1.99 et 2.01 sont entre 4 et 5 : cela est cohérent avec le fait que $p(\theta | y)$ suive une loi normale d'esp?rance $2y$: si $y$ vaut environ 2, les valeurs de $\theta$ les plus probables sont autour de 4. 
+
+## Question 9
+
+
+## Question 10
+
+```{r}
+Gibbs <- function(n, nb_val_eleminees, theta0 = 0){
+    theta_t <- theta0 #Initialisation de theta
+    
+    theta <- c() #vecteur stockant les valeurs de theta
+    y <- c() #vecteur stockant les valeurs de y
+    
+    #On doit it?rer n fois, plus le nombre de valeurs que l'on veut ?liminer
+    #en d?but d'algorithme pour perdre les condition initiales
+    for (t in 1:(n + nb_val_eleminees)){
+        y_t <- rnorm(1, theta_t / 4, sqrt(2)) # On simule y_t
+        theta_t <- rnorm(1, 2 * y_t, 4) # On simule theta_t
+        
+        #On ajoute les nouvelles valeurs aux vecteurs si on a ?limin? assez de valeurs
+        if (t > nb_val_eleminees){
+            theta <- c(theta, theta_t)
+            y <- c(y, y_t)
+        }
+    }
+    return(data.frame(y, theta))
+}
+```
+
+```{r}
+
+#On ?limine la 1e valeur seulement
+gibbs1 <- Gibbs(1000, 1)
+plot(gibbs1, col = "brown")
+lines((-6:6), 2 * (-6:6), type = "l", col = "blue")
+
+#On ?limine les 10 premi?res valeurs
+gibbs10 <- Gibbs(1000, 10)
+plot(gibbs10, col = "grey")
+lines((-6:6), 2 * (-6:6), type = "l", col = "blue")
+
+#On ?limine les 100 premi?res valeurs
+gibbs100 <- Gibbs(1000, 100)
+plot(gibbs100, col = "red")
+lines((-6:6), 2 * (-6:6), type = "l", col = "blue")
+
+#On ?limine les 500 premi?res valeurs
+gibbs500 <- Gibbs(1000, 500)
+plot(gibbs500, col = "black")
+lines((-6:6), 2 * (-6:6), type = "l", col = "blue")
+
+#On ?limine les 10000 premi?res valeurs
+gibbs10000 <- Gibbs(1000, 10000)
+plot(gibbs10000, col = "green")
+lines((-6:6), 2 * (-6:6), type = "l", col = "blue")
+```
+
+Ainsi, on peut voir que le nombre de valeurs éliminées ne semble pas influer sur l'algorithme.
+De plus, les résultats par cet algorithme correspondent très bien à ce qui a été calculé : cet algorithme permet donc de simuler la loi de $(\theta, y)$, avec pour donnée seulement $p(\theta | y)$ et $p(y | \theta)$. 

@@ -1,0 +1,254 @@
+---
+title: "TP2 de MPA"
+author: Clément MALLERET, Alexis SONOLET
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+---
+
+##Question 1
+
+$$c = 1 \implies \theta_1 = \theta_2 \\
+\implies \forall 1 \leq i \leq n :  p(y_i | c = 1, \theta_2, \theta_2) = p(y_i | \theta_2) = \theta_2^{y_i}(1-\theta_2)^{1 - y_i} \\
+$$
+
+Ainsi, les émissions étant indépendantes, on a :
+$$
+p(y|c=1) = p(y_1, \dots, y_n) = p(y_1) \dots p(y_n) = \prod_{i=1}^n \theta_2^{y_i}(1-\theta_2)^{1 - y_i}
+$$
+
+##Question 2
+
+Par indépendances des $y_i$ comme précédemment :
+$$
+p(y|c) = \prod_{i=1}^{c-1} p(y_i) \times \prod_{i = c}^{n} p(y_i)\\
+=\prod_{i=1}^{c-1} \theta_1^{y_i}(1-\theta_1)^{1 - y_i} \times \prod_{i = c}^{n}\theta_2^{y_i}(1-\theta_2)^{1 - y_i} \\
+$$
+
+##Question 3
+
+$$
+\dfrac{p(c|y)}{p(c=1 | y)} = \dfrac{p(y|c)p(c)p(y)}{p(y|c=1)p(c=1)p(y)}
+$$
+
+Or :
+$$
+p(c) = \dfrac{1}{np(\theta_1)p(\theta_2)} = p(c=1)
+$$
+car $\theta_1, theta_2$ connus donc fixes.
+
+On a donc :
+
+$$
+\dfrac{p(c|y)}{p(c=1 | y)} = \dfrac{p(y|c)}{p(y|c=1)} = \prod_{i=1}^{c-1} \dfrac{\theta_1^{y_i}(1-\theta_1)^{1 - y_i}}{\theta_2^{y_i}(1-\theta_2)^{1 - y_i}}
+$$
+
+Coût en calculs :
+Pour c quelconque, on effectue un produit de $c-1$ termes.
+Chaque terme ne peut prendre que deux valeurs : $\dfrac{\theta_1}{\theta_2}$ si $y_i = 1$, $\dfrac{(1 - \theta_1)}{(1-\theta_2)}$ sinon : on précalculera donc ces deux valeurs. Ainsi, le coût de calcul d'un terme du produit est de 1 (choix du terme suivant la valeur de $y_i$)
+Le coût de calcul pour $c$ entre $2$ et $n$ est donc de $c-1$ multiplications.
+Pour $c=1$, le rapport vaut 1 : on n'a pas de multiplications.
+On fait le calcul pour $c$ allant de $1$ à $n$ : on a donc au total $0 + \sum_{c=2}^n (c-1) = \dfrac{n(n-1)}{2}$
+
+##Question 4
+
+On a $\theta_1$, $\theta_2$ connues.
+On commence par calculer tous les rapports $\dfrac{p(c|y)}{p(c=1|y)} \forall c \geq 2$. On peut faire cette étape en $O(n)$ car :
+
+$$
+\dfrac{p(c=i+1|y)}{p(c=1|y)} = \dfrac{p(c=i|y)}{p(c=1|y)} \times \dfrac{\theta_1^{y_i}(1-\theta_1)^{1-y_i}}{\theta_2^{y_i}(1-\theta_2)^{1-y_i}}
+$$
+Une fois cette étape passée, on calcule p(c=1|y). Pour cela, on résout le système suivant :
+$$
+p(c=1|y) = 1 - p(c=1|y) \times \sum_{i=2}^n \dfrac{p(c=i|y)}{p(c=1|y)} \\
+\Leftrightarrow p(c=1|y) = \dfrac{1}{1+\sum_{i=2}^n \dfrac{p(c=i|y)}{p(c=1|y)}}
+$$
+Le calcul de la somme est en $O(n)$ : on est toujours en $O(n)$.
+Ayant maintenant $p(c=1|y)$, on multiplie tous les rapports $\dfrac{p(c|y)}{p(c=1|y)}$ par $p(c=1|y)$ (en $O(n)$) : on a désormais calculé tous les $p(c|y)$ en $O(n)$.
+
+Implémentation :
+
+
+```{r}
+#entrée : vecteur y de taille n, theta1, theta2
+#sortie : vecteur des p(c|y) de taille n
+calcul_pc <- function(y, theta1, theta2){
+    p_c = c(1)
+    n = length(y)
+    if (theta2 == 0){ #on évite les cas ou theta2 = 0 ou 1 (division par 0)
+      rapport_theta_0 = theta1/0.0001
+    }
+    else{
+      rapport_theta_0 = theta1/theta2
+    }
+    
+    if (theta2 == 1){
+      rapport_theta_1 = theta1/0.0001
+    }
+    else{
+      rapport_theta_1 = (1 - theta1) / (1 - theta2)
+    }
+    
+    #on calcule les rapports :
+    #initialisation
+    if (y[1] == 1){
+        p_actuel = rapport_theta_0
+    }
+    else{
+        p_actuel = rapport_theta_1
+    }
+    p_c = c(p_c, p_actuel)
+    
+    #iteration
+    for (i in 3:n){
+        if (y[i-1] == 1){
+            p_actuel = p_actuel * rapport_theta_0
+        }
+        else{
+            p_actuel = p_actuel * rapport_theta_1
+        }
+        p_c = c(p_c, p_actuel)
+        
+    }
+    
+    #on calcule p(c=1)
+    p_c_1 = 1 / (sum(p_c)) #et non 1 + somme car on a initialisé p(c=1) a 1.
+    
+    #on multiplie tout le vecteur par p(c=1|y) :
+    p_c = p_c_1 * p_c
+    return(p_c)
+}
+
+```
+
+##Question 5
+
+
+
+```{r}
+#On simule c à partir de theta1, theta2, y grace à l'algorithme de rejet
+
+simulation_c <- function(y, theta1, theta2){
+  n = length(y)
+  p_c = calcul_pc(y, theta1, theta2)
+  
+  #initialisation
+  c_simule = sample(1:n, 1)
+  x = runif(1)
+  
+  #boucle
+  while(x > p_c[c_simule]){
+    c_simule = sample(1:n, 1)
+    x = runif(1)
+  }
+  return(c_simule)
+}
+
+```
+
+```{r}
+#On simule des valeurs de theta a partir de c avec la loi beta
+
+simulation_theta <- function(y,c){
+  n = length(y)
+  nb_1_avant_c = sum(y[1:c-1])
+  nb_1_apres_c = sum(y[c:n])
+  
+  theta1 = rbeta(1, nb_1_avant_c + 1, c - nb_1_avant_c)
+  theta2 = rbeta(1, nb_1_apres_c + 1, (n - c) + 1 - nb_1_apres_c)
+
+  return(c(theta1, theta2))
+}
+```
+
+#algo de Gibbs
+```{r}
+
+gibbs <-function(y) {
+  #On choisit des theta1, theta2 quelconques
+  theta1 = 0.5 #runif(1)
+  theta2 = 0.5 #runif(1)
+  
+  c = simulation_c(y, theta1, theta2)
+  
+  for (i in 1:2000){
+    theta = simulation_theta(y, c)
+    theta1 = theta[1]
+    theta2 = theta[2]
+    c = simulation_c(y, theta1, theta2)
+  }
+  
+  #On fait une dernière itération
+  theta = simulation_theta(y, c)
+  theta1 = theta[1]
+  theta2 = theta[2]
+  
+  #on récupère les probabilités de c=i pour tout i
+  pc = calcul_pc(y, theta1, theta2)
+  
+  c = simulation_c(y, theta1, theta2)
+  return(list(pc, theta1, theta2, c))
+}
+```
+
+##Question 6
+
+En relancant un grand nombre de fois sur les exemples de la question 7, on voit que les résultats sont toujours quasiment identiques, malgré l'initialisation de $\theta_1$ et de $\theta2$ a des valeurs aléatoires selon une loi uniforme.
+
+##Question 7
+```{r}
+quartile <- function(y) {
+  n = length(y)
+  acc = 0
+  premier_quartile_fait = FALSE
+  quartiles = c()
+  
+  for (i in 1:n){
+    acc = acc + y[i]
+    if (acc > 0.25 && !premier_quartile_fait){
+      premier_quartile_fait = TRUE
+      quartiles = c(quartiles, i-1)
+    }
+    if (acc > 0.75){
+      quartiles = c(quartiles, i)
+      return(quartiles)
+    } 
+  }
+}
+```
+
+
+
+```{r}
+#On importe les données
+echantillon1 = scan("echantillon1.txt")
+echantillon2 = scan("echantillon2.txt")
+```
+
+```{r}
+affiche_resultats <- function(y, nom){
+  a = gibbs(y)
+  #affichage des probabilités de c=i pour tout i
+  pc <- a[[1]]
+  plot(pc, type = "h", xlab = "i", sub = nom, ylab = "p(c=i|y)")
+  
+  #on récupère theta1, theta 2, c
+  theta1 = a[[2]]
+  theta2 = a[[3]]
+  c = a[[4]]
+  
+  #on calcule les bornes de l'intervalle centré dans lequel c à 50% de chances de se trouver
+  quartiles = quartile(pc)
+  premier_quartile = quartiles[1]
+  troisieme_quartile = quartiles[2]
+  
+  #on affiche le tout dans un joli tableau
+  tableau = data.frame(theta1, theta2, c, premier_quartile, troisieme_quartile, row.names = nom)
+
+  tableau
+
+}
+affiche_resultats(echantillon1, "exemple 1")
+affiche_resultats(echantillon2, "exemple 2")
+```

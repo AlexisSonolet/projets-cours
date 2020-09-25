@@ -1,0 +1,452 @@
+---
+title: "TP3"
+output: html_document
+---
+
+Remarque préliminaire : on adoptera dans ce TP la paramétrisation de la loi gamma (shape, scale).
+
+#PARTIE 1
+
+##QUESTION 1
+
+On a :
+$$
+y_i \sim P(\theta) : p(y_i = k_i) = e^{-\theta}\dfrac{\theta^{k_i}}{k_i!}\\
+P(y|\theta) = \prod_{i=1}^n e^{-\theta}\dfrac{\theta^{k_i}}{k_i!}
+$$
+
+##QUESTION 2
+
+
+On a : $p(\theta) \propto \dfrac{1}{\theta}$
+$$
+p(\theta|y) = \dfrac{p(y|\theta) p(\theta)}{p(y)} \propto p(y|\theta)p(\theta)\\
+\propto e^{-n\theta}\left( \prod_{i=1}^n \dfrac{\theta^{k_i}}{k_i!}  \right) \times \dfrac{1}{\theta}\\
+\propto \dfrac{e^{-n\theta}}{\theta} \prod_{i=1}^n \dfrac{\theta^{k_i}}{k_i!}\\
+\propto \dfrac{e^{-n\theta}\theta^{K - 1}}{\prod_{i=1}^n k_i !}
+$$
+où $K = (\sum_{i=1}^n k_i)$.
+
+$$
+\propto \dfrac{ e^{- \frac{\theta}{1/n}} \theta^{K - 1} }{\prod_{i=1}^n k_i!}
+$$
+
+Le dénominateur est une constante :
+$$
+\propto e^{- \frac{\theta}{1/n}} \theta^{K - 1} \propto f(\theta, K, \frac{1}{n})
+$$
+où $f$ est la fonction de densité d'une loi gamma de paramètres : $\Gamma(K, \frac{1}{n})$.
+
+La loi à postériori du paramètre $\theta$ est donc une loi gamma de paramètres $K, \frac{1}{n}$.
+Son espérance est donc : $\mathbb{E}(\theta|y) = K \times \dfrac{1}{n}$
+
+##QUESTION 3
+
+
+Le principe de l'algorithme de Metropolis-Hasting est de, à partir de la loi $\Pi(\theta)$, et d'une loi instrumentale choisie, simuler une chaine de Markov convergeant vers $\Pi(\theta)$, sa loi stationnaire. Cela permet d'échantilloner des lois dont on ne peux pas calculer la constante de normalisation, ce qui est notre cas ici.
+
+
+
+On choisit une loi instrumentale exponentielle de paramètre $\lambda$.
+
+
+Le calcul de $r$ ne pose mathématiquement pas de problème, mais il fait intervenir de nombreux rapport d'exponentielles de très petits nombres, et des puissances très élevées : beaucoup d'erreur d'approximation et de dépacement de capacité causent des problèmes (apparitions de NaN). Pour éviter cela, on calcule le rapport plus intelligemment :
+
+$$
+r = \dfrac{(\theta^*)^{K-1} \times e^{-n\theta^*} \times \lambda e^{-\lambda \theta_t}}{(\theta_t)^{K-1} \times e^{-n\theta_t} \times \lambda e^{-\lambda \theta^*}}\\
+= (\dfrac{\theta^*}{\theta_t})^{K - 1} \times e^{(n - \lambda)(\theta_t - \theta^*)}
+$$
+Si $\theta^*$ de même signe que $\theta_t$ :
+$$
+(\dfrac{\theta^*}{\theta_t})^{K - 1} = \exp( (K - 1) \ln(\dfrac{\theta^*}{\theta_t}))
+$$
+
+Sinon :
+
+$$
+(\dfrac{\theta^*}{\theta_t})^{K - 1} = (-1)^{K - 1} \exp( (K - 1) \ln(-\dfrac{\theta^*}{\theta_t}))
+$$
+On obtient donc comme formule du calcul de r final :
+$$
+r = (\pm 1) ^{K - 1} \exp\left\{(n - \lambda)(\theta_t - \theta^*) + (K - 1) \ln(\pm\dfrac{\theta^*}{\theta_t})\right\}
+$$
+Cette formule a pour avantage de n'avoir que une seule exponentielle à calculer : l'exponentielle en elle-même ne peux pas produire de NaN.
+A l'intérieur, on a la somme d'un terme calculable par ordinateur, et d'un logarithme, qui dans le pire des cas vaut -Inf (en supposant $\theta_t, \theta^*$ toujours strictements positifs) : $\exp(-Inf) = 0$.
+
+Finalement, on choisit $\lambda = \dfrac{n}{K}$, pour que la moyenne de la loi instrumentale corresponde à celle de la loi stationnaire : on propose ainsi des valeurs qui ont plus de chances d'être acceptées.
+
+```{r}
+tirage_loi_instrumentale <- function(){
+    return(rexp(1, rate = (n / K)))
+}
+```
+
+```{r}
+calcul_r <- function(theta_t, theta_etoile){
+    if (theta_t == 0) {
+        theta_t = 0.000001
+    }
+    if (theta_etoile == 0){
+        theta_etoile = 0.0000001
+    }
+    
+    
+    if (theta_etoile * theta_t > 0){
+        #meme signe
+        val = exp( (K - 1) * log(theta_etoile / theta_t) + n * (1 - (1/K)) * (theta_t - theta_etoile))
+    } else {
+        #signes opposés
+        val = (-1)**(K-1) * exp( (K - 1) * log(- theta_etoile / theta_t) + n * (1 - (1/K)) * (theta_t - theta_etoile))
+    }
+    return(val)
+}
+```
+
+
+```{r}
+metropolisHasting <- function(nb_iterations){
+    #etape 1
+    theta_t = K/n #Initialisation de theta_0
+    
+    #iterations :
+    for (i in 1:nb_iterations) {
+        #etape 2
+        theta_etoile = tirage_loi_instrumentale()
+        #etape 3
+        r = calcul_r(theta_t, theta_etoile)
+        #etape 4
+        if (runif(1) < min(1,r)) {
+            theta_t <- theta_etoile
+        }
+        #Sinon on ne change pas theta_t
+    }
+    return(theta_t)
+}
+```
+
+
+```{r}
+generationMetropolis <- function(n, nb_iter){
+    vect = c()
+    for (i in 1:n){
+        vect = c(vect, metropolisHasting(nb_iter))
+    }
+    return(vect)
+}
+```
+
+
+##Question 4
+
+```{r}
+#Chargement de l'échantillon
+echantillon = scan("echantillon.txt")
+```
+
+```{r}
+#Calcul des paramètres de la loi Gamma :
+K = sum(echantillon)
+n = length(echantillon)
+```
+
+```{r}
+echantillon_genere = generationMetropolis(200,30000)
+```
+
+
+```{r}
+#moyenne, médialle, quartiles :
+summary(echantillon_genere)
+
+#intervalle de confiance centré à 95% :
+quantile(echantillon_genere, c(0.025, 0.975))
+```
+
+##QUESTION 5
+
+
+```{r}
+hist(echantillon_genere, freq = FALSE, ylim = c(0,2))
+intervalle = (0:2000) / 100
+lines(intervalle, dgamma(intervalle, shape = K, scale = 1/n))
+```
+
+##QUESTION 6
+
+On a :
+
+$$
+p(\tilde{y}|t) \propto \int p(\tilde{y}|\theta) p(\theta|y)d\theta \\
+\propto \int \dfrac{1}{\tilde{y!}} \theta^\tilde{y}e^{-\theta} \times e^{-n\theta} \theta^{K - 1}d\theta
+\propto \dfrac{1}{\tilde{y}!} \int_0^{+ \infty} e^{-(n+1)\theta} \theta^{K+\tilde{y}-1} d\theta \\
+$$
+On remarque que l'intégrale est proportionelle à la fonction de répartition d'une loi gamma de paramètres $K + \tilde{y}, \dfrac{1}{n+1}$ : l'intégrale est donc proportionelle a 1 car étant prise entre 0 et l'infini.
+On a donc :
+$$
+p(\tilde{y}|t) \propto \dfrac{1}{\tilde{y!}}
+$$
+On simule cette nouvelle variable par l'algorithme de Monte-Carlo : on simule $p(\theta | y)$, puis $p(\tilde{y}|\theta)$ :
+
+```{r}
+simulation_y_tilde <- function(theta){
+    return(rpois(1, theta))
+}
+```
+
+```{r}
+Monte_carlo <- function(n){
+    vect = c()
+    for (i in 1:n){
+        theta = metropolisHasting(20000)
+        y_tilde = simulation_y_tilde(theta)
+        vect = c(vect, y_tilde)
+    }
+    return(vect)
+}
+```
+
+```{r}
+simu = Monte_carlo(n)
+summary(simu)
+```
+
+
+
+```{r}
+histSim <- hist(simu, freq = FALSE)
+histDonnees <- hist(echantillon, freq = FALSE)
+
+#en rouge, les donnees
+plot(histDonnees, col = rgb(1,0,0,1/4), ylim = c(0,0.16), freq = FALSE)
+#en bleu, les donnes simulees
+plot(histSim, col = rgb(0,0,1,1/4), freq = FALSE, add = T)
+```
+
+On voit que le modèle n'est pas très adapté : même s'il estime bien $\theta$ (les moyennes correspondent), les valeurs simulées ne sont pas aussi écartées que dans la réalité : les valeurs sont trop centrées sur la moyenne.
+
+
+#PARTIE 2
+
+
+##Question 1
+
+$$ p(y|z, \theta) = \frac{p(y,z|\theta)}{p(z|\theta)}\\
+   p(y|z, \theta) \propto \prod_{i,k} \frac{(\theta _k)^{y_i}exp(-\theta _k)}{y_i !} \\
+   \propto \prod_k exp(-\theta _k) \prod_i \dfrac{(\theta _k)^{y_i}}{y_i!}
+   $$
+
+##Question 2
+
+$$ p(z, \theta|y) = \frac{p(y|z,\theta)p(z,\theta)}{p(y)} \\
+   \propto p(y|z,\theta)p(z, \theta) \\
+   \propto \left( \prod_k exp(-\theta _k) \prod_i \dfrac{(\theta _k)^{y_i}}{y_i!} \right) p(z)p(\theta) \\
+   \propto \left( \prod_k exp(-\theta _k) \prod_i \dfrac{(\theta _k)^{y_i}}{y_i!} \right) p(z) \prod_k p(\theta_k) $$
+Or, $p(\theta _k) \propto \frac{1}{\theta _k}$ et $p(z) \propto 1$.
+Donc :
+$$ p(z, \theta | y) \propto \left( \prod_k exp(-\theta _k) \prod_i \dfrac{(\theta _k)^{y_i}}{y_i!} \right) \prod_{k} \frac{1}{\theta _k} \\
+   \propto \prod_k \dfrac{exp(-\theta _k)}{\theta_k} \prod_i \dfrac{(\theta _k)^{y_i}}{y_i!} $$
+
+##Question 3
+
+
+$$ p(z_i = k|y, \theta) = \dfrac{p(z_i | y_i, \theta)}{p(y_i|\theta)} = \dfrac{p(y_i|z_i, \theta)}{\sum_ k p(y_i|z_i=k, \theta)} \propto p(y_i|z_i, \theta)\\
+\propto \dfrac{(\theta_{z_i})^{y_i}e^{-\theta_{z_i}}}{y_i!}
+$$
+
+On reconnait ici une loi de poisson de paramètre $\theta_{z_i}$.
+
+##Question 4
+
+$$ p(\theta _k | \theta _{-k}, y, z) = \frac{p(\theta, y, z)}{p(z, y, \theta _{-k})}  = \frac{p(z, \theta |y) p(y)}{p(z, y, \theta _{-k})} $$
+$$ \propto \frac{p(z, \theta | y)}{p(\theta _{-k}, z |y)p(y)} $$
+$$ \propto  \frac{p(z, \theta |y)}{p(\theta _{-k}, z | y)} $$
+$$ \propto \frac{ \prod \limits_{j} \frac{1}{\theta_j} \prod \limits_{i \in I_j} \frac{(\theta _j)^{y_i} exp(-\theta _j)}{y_i!} }{ \prod \limits_{j \neq k} \frac{1}{\theta_j} \prod \limits_{i \in I_j} \frac{(\theta _j) ^{y_i} exp(-\theta _j)}{y_i!}} $$
+$$ \propto \frac{1}{\theta _k} \prod_{i \in I_k}  \frac{(\theta _k) ^{y_i} e^{-\theta _k}}{y_i!} $$
+$$ \propto \frac{1}{\theta _k} \prod_{i \in I_k} (\theta _k) ^{y_i} e^{-\theta _k} $$
+$$ \propto \frac{e^{-n_k \theta _k}}{\theta _k} (\theta _k)^{n_k \bar{y}_k} $$
+Enfin :
+$$ p(\theta _k | \theta _{-k}, y, z) \propto \theta _k^{n_k \bar{y}_k -1} \textrm{exp}(-n_k \theta _k) $$
+On reconnait une loi gamma de paramètres $(n_k \bar{y_k}, \frac{1}{n_k})$.
+
+
+##Question 5
+
+```{r}
+
+#On simule z à partir de theta.
+
+simulation_z<- function(theta, y, z){
+    val = c()
+    K = length(theta)
+    for (i in 1:length(y)){
+        p = ((theta^y[i]) * exp(- theta)) / factorial(y[i])
+        val = c(val, sample(1:K, 1, prob = p))
+    }
+    return(val)
+}
+
+```
+
+```{r}
+#On simule des valeurs de theta a partir de z
+#z suit une loi gamma: on simule a partir de rgamma
+
+simulation_theta <- function(z, y, theta){
+  theta_sim = c()
+  K = length(theta)
+  for (k in 1:K){
+    nk = length(z[z == k]) #Nombre de valeurs de z egales a k
+    yk = mean(y[z == k])  #yi ou i tq zi == k, c'est a dire yi avec i dans Ik
+    #if (is.na(yk)){
+    #  yk = 10
+    #}
+    theta_sim = c(theta_sim, rgamma(1, shape = nk * yk, scale = 1/nk))
+  }
+  return(theta_sim)
+}
+```
+
+```{r}
+initialisation_theta <- function(n){
+    theta = 20 * runif(n)
+    return(theta)
+}
+```
+
+
+
+#algo de Gibbs
+```{r}
+
+gibbs <-function(y, K) {
+  n = length(y)
+  
+  theta = initialisation_theta(K)
+  z = sample(1:K, n, replace = T)
+  
+  for (i in 1:1000){
+    theta = simulation_theta(z, y, theta)
+    z = simulation_z(theta, y, z)
+  }
+  
+  return(list(theta = theta, z = z))
+}
+```
+
+
+```{r}
+#genere n valeurs via gibbs
+gen_gibbs <- function(y, K ,n ){
+    val = c()
+    for (i in 1:n){
+        val = c(val, gibbs(y, K))
+    }
+    return(val)
+}
+
+```
+
+##Question 6
+On peut estimer l'espérence de $\theta_k$ sachant $y$ en faisant la moyenne empirique sur un certain nombre de générations de l'algorithme précédent.
+Les proportions de chaque composante peuvent quant à elles être estimées en regardant les proportions de chaque $z_i$.
+
+```{r}
+estimation_theta <- function(theta){
+    return(mean(theta))
+}
+```
+
+```{r}
+estimation_proportions <- function(z, K){
+    prop = c()
+    for (i in 1:K){
+        prop = c(prop, mean(z[z==i]))
+    }
+    return(prop)
+}
+```
+
+##Question 7
+
+```{r}
+loi_melange <- function (p, theta){
+  classe_choisie = sample(1:length(theta), 1, prob = p)
+  val_melange = rpois(1, theta[classe_choisie])
+  return(val_melange)
+}
+
+
+
+gen_melange <-function(p, theta, n){
+   gen= c()
+   for (i in 1:n){
+     gen = c(gen, loi_melange(p, theta))
+   }
+   return(gen)
+}
+```
+
+
+On aura dans la suite, l'échantillon donné en rouge, et celui simulé en bleu.
+
+
+K = 4
+
+```{r}
+
+K = 4
+K_4 = gibbs(echantillon, K)
+
+theta_moyen = estimation_theta(K_4$theta)
+p = estimation_proportions(K_4$z, K)
+theta = K_4$theta
+
+hist_ech = hist(echantillon)
+hist_k4 = hist(gen_melange(p, theta, 200))
+
+
+plot(hist_ech, col = rgb(1,0,0,1/4), ylim = c(0,0.16), freq = FALSE)
+plot(hist_k4, col = rgb(0,0,1,1/4), freq = FALSE, add = T)
+
+```
+
+K = 5
+
+```{r}
+
+K = 5
+K_4 = gibbs(echantillon, K)
+
+theta_moyen = estimation_theta(K_4$theta)
+p = estimation_proportions(K_4$z, K)
+theta = K_4$theta
+
+hist_k4 = hist(gen_melange(p, theta, 200))
+
+
+plot(hist_ech, col = rgb(1,0,0,1/4), ylim = c(0,0.16), freq = FALSE)
+plot(hist_k4, col = rgb(0,0,1,1/4), freq = FALSE, add = T)
+
+```
+
+K = 6
+
+```{r}
+
+K = 6
+K_4 = gibbs(echantillon, K)
+
+theta_moyen = estimation_theta(K_4$theta)
+p = estimation_proportions(K_4$z, K)
+theta = K_4$theta
+
+hist_k4 = hist(gen_melange(p, theta, 200))
+
+
+plot(hist_ech, col = rgb(1,0,0,1/4), ylim = c(0,0.16), freq = FALSE)
+plot(hist_k4, col = rgb(0,0,1,1/4), freq = FALSE, add = T)
+
+```
+
+
+
